@@ -9,28 +9,27 @@ class MyUser(models.Model):
     username = models.CharField(max_length=255)
 
     @classmethod
-    def get_sharding_model(cls, _id=None):
-        piece = _id % 2 + 1
-
-        class Meta:
-            db_table = 'user_%s' % piece
-
-        attrs = {
-            '__module__': cls.__module__,
-            'Meta': Meta,
-        }
-
-        Model = type(str('User%s' % piece), (cls, ), attrs)
-        return Model
+    def get_sharding_table(cls, id=None):
+        piece = id % 2 + 1
+        return cls._meta.db_table + str(piece)
 
     @classmethod
-    def sharding_get(cls, _id=None, **kwargs):
-        assert _id, '_id is required!'
-        Model = cls.get_sharding_model(_id=_id)
-        return Model.objects.get(id=_id, **kwargs)
+    def sharding_get(cls, id=None, **kwargs):
+        assert isinstance(id, int), 'id must be integer!'
+        table = cls.get_sharding_table(id)
+        sql = "SELECT * FROM %s" % table
+        kwargs['id'] = id
+        condition = ' AND '.join([k + '=%s' for k in kwargs])
+        params = [str(v) for v in kwargs.values()]
+        where = " WHERE " + condition
+        try:
+            return cls.objects.raw(sql + where, params=params)[0]  # 这里应该模仿Queryset中get的处理方式
+        except IndexError:
+            # 其实应该抛Django的那个DoesNotExist异常
+            return None
 
     class Meta:
-        abstract = True
+        db_table = 'user_'
 
 
 # class User1(MyUser):
